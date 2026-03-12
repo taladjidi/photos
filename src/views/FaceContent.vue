@@ -123,6 +123,7 @@
 			:file-ids="faceFileIds"
 			:loading="loadingFiles || loadingFaces">
 			<FileComponent
+				v-if="files[file.id]"
 				slot-scope="{ file, distance }"
 				:file="files[file.id]"
 				:allow-selection="true"
@@ -306,9 +307,12 @@ export default {
 
 	methods: {
 		openViewer(fileId: string) {
+			if (!this.files[fileId]) {
+				return
+			}
 			window.OCA.Viewer.open({
 				fileInfo: toViewerFileInfo(this.files[fileId]),
-				list: this.faceFileIds.map((fileId) => toViewerFileInfo(this.files[fileId])),
+				list: this.faceFileIds.filter((fileId) => this.files[fileId]).map((fileId) => toViewerFileInfo(this.files[fileId])),
 			})
 		},
 
