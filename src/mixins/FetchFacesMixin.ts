@@ -127,6 +127,10 @@ export default defineComponent({
 				this.$store.dispatch('appendFiles', fetchedFiles)
 
 				if (fetchedFiles.length > 0) {
+					// Wait for the render cycle triggered by appendFiles to complete
+					// before committing face file IDs, to avoid NcActions slot
+					// processing errors during mid-render reactive updates.
+					await this.$nextTick()
 					await this.$store.commit('addFilesToFace', { faceName, fileIdsToAdd: fileIds })
 				}
 
@@ -179,6 +183,7 @@ export default defineComponent({
 				this.$store.dispatch('appendFiles', fetchedFiles)
 
 				if (fetchedFiles.length > 0) {
+					await this.$nextTick()
 					await this.$store.commit('addUnassignedFiles', { fileIdsToAdd: fileIds })
 				}
 
