@@ -150,7 +150,23 @@ const actions = {
 						oldFace ? `/recognize/${getCurrentUser()?.uid}/faces/${oldFace}/${fileBaseName}` : `/recognize/${getCurrentUser()?.uid}/unassigned-faces/${fileBaseName}`,
 						`/recognize/${getCurrentUser()?.uid}/faces/${faceName}/${fileBaseName}`,
 					)
-					file.faceDetections.find((detection) => detection.title === oldFace).title = faceName
+
+					// Update the face detection title in the local state
+					let faceDetections = file.attributes?.['face-detections']
+					if (typeof faceDetections === 'string') {
+						try {
+							faceDetections = JSON.parse(faceDetections)
+						} catch {
+							faceDetections = []
+						}
+					}
+					if (Array.isArray(faceDetections)) {
+						const detection = faceDetections.find((detection) => detection.title === oldFace)
+						if (detection) {
+							detection.title = faceName
+						}
+					}
+
 					await context.commit('addFilesToFace', { faceName, fileIdsToAdd: [fileId] })
 					if (oldFace) {
 						await context.commit('removeFilesFromFace', { faceName: oldFace, fileIdsToRemove: [fileId] })
@@ -184,7 +200,7 @@ const actions = {
 
 		const promises = fileIdsToRemove
 			.map(async (fileId) => {
-				const fileBaseName = context.rootState.files[fileId].basename
+				const fileBaseName = context.rootState.files.files[fileId].basename
 				const symbol = await semaphore.acquire()
 
 				try {
