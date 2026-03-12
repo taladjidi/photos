@@ -354,6 +354,7 @@ export default {
 				this.loadingCount++
 				await this.$store.dispatch('moveFilesToFace', { oldFace: this.faceName, faceName, fileIdsToMove: this.facesFiles[this.faceName] })
 				await this.$store.dispatch('deleteFace', { faceName: this.faceName })
+				await this.fetchFaceContent(faceName, true)
 				this.showMergeModal = false
 				this.$router.push({ name: 'facecontent', params: { faceName } })
 			} catch (error) {
@@ -367,6 +368,7 @@ export default {
 			try {
 				this.loadingCount++
 				await this.$store.dispatch('moveFilesToFace', { oldFace: this.faceName, faceName, fileIdsToMove: fileIds })
+				await this.fetchFaceContent(faceName, true)
 				this.showMoveModal = false
 			} catch (error) {
 				logger.error(error)
