@@ -123,7 +123,6 @@
 			:file-ids="faceFileIds"
 			:loading="loadingFiles || loadingFaces">
 			<FileComponent
-				v-if="files[file.id]"
 				slot-scope="{ file, distance }"
 				:file="files[file.id]"
 				:allow-selection="true"
@@ -284,7 +283,7 @@ export default {
 		},
 
 		faceFileIds(): string[] {
-			return this.facesFiles[this.faceName] || []
+			return (this.facesFiles[this.faceName] || []).filter((id) => this.files[id])
 		},
 
 		shouldFavoriteSelection(): boolean {
