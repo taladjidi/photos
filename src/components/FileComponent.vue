@@ -25,6 +25,7 @@
 				<!-- Load small preview first, then the larger one -->
 				<!-- Preload large preview for near visible files -->
 				<!-- Preload small preview for further away files -->
+				<!-- activeSrc* gates uncached previews behind a concurrency queue -->
 				<template v-if="initialized">
 					<canvas
 						v-if="hasBlurhash && !loadedSmall && !loadedLarge"
@@ -33,10 +34,10 @@
 						aria-hidden="true" />
 
 					<img
-						v-if="!loadedLarge && (loadedSmall || (distance < 5 && !errorSmall))"
+						v-if="!loadedLarge && (loadedSmall || (activeSrcSmall && distance < 5 && !errorSmall))"
 						ref="imgSmall"
 						:key="`${file.basename}-small`"
-						:src="srcSmall"
+						:src="activeSrcSmall"
 						:alt="file.basename"
 						:decoding="loadedSmall || isVisible ? 'sync' : 'async'"
 						:fetchpriority="loadedSmall || isVisible ? 'high' : 'low'"
@@ -45,10 +46,10 @@
 						@error="onErrorSmall">
 
 					<img
-						v-if="loadedLarge || ((isVisible || (distance < 2 && (loadedSmall || errorSmall))) && !errorLarge)"
+						v-if="loadedLarge || (activeSrcLarge && (isVisible || (distance < 2 && (loadedSmall || errorSmall))) && !errorLarge)"
 						ref="imgLarge"
 						:key="`${file.basename}-large`"
-						:src="srcLarge"
+						:src="activeSrcLarge"
 						:alt="file.basename"
 						:decoding="loadedLarge || isVisible ? 'sync' : 'async'"
 						:fetchpriority="loadedLarge || isVisible ? 'high' : 'low'"
@@ -84,7 +85,7 @@ import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwit
 import PlayCircleOutlineIcon from 'vue-material-design-icons/PlayCircleOutline.vue'
 import VideoOutline from 'vue-material-design-icons/VideoOutline.vue'
 import FavoriteIcon from './FavoriteIcon.vue'
-import { isCachedPreview } from '../services/PreviewService.js'
+import { acquireSlot, releaseSlot } from '../services/PreviewQueue.js'
 
 export default {
 	name: 'FileComponent',
@@ -125,6 +126,8 @@ export default {
 			errorSmall: false,
 			loadedLarge: false,
 			errorLarge: false,
+			activeSrcSmall: '',
+			activeSrcLarge: '',
 		}
 	},
 
@@ -163,11 +166,16 @@ export default {
 
 	watch: {
 		async file() {
+			this.cancelSlot()
+			this._destroyed = false // Reset for recycled component
+
 			this.initialized = false
 			this.loadedSmall = false
 			this.errorSmall = false
 			this.loadedLarge = false
 			this.errorLarge = false
+			this.activeSrcSmall = ''
+			this.activeSrcLarge = ''
 
 			await this.init()
 		},
@@ -178,27 +186,81 @@ export default {
 	},
 
 	beforeDestroy() {
-		// cancel any pending load
+		this.cancelSlot()
+
+		// Cancel any in-flight image loads
 		if (this.$refs.imgSmall !== undefined) {
 			(this.$refs.imgSmall as HTMLImageElement).src = ''
 		}
-		if (this.$refs.srcLarge !== undefined) {
-			(this.$refs.srcLarge as HTMLImageElement).src = ''
+		if (this.$refs.imgLarge !== undefined) {
+			(this.$refs.imgLarge as HTMLImageElement).src = ''
 		}
 	},
 
 	methods: {
 		async init() {
-			[this.loadedSmall, this.loadedLarge] = await Promise.all([
-				await isCachedPreview(this.srcSmall),
-				await isCachedPreview(this.srcLarge),
-			])
-
 			this.initialized = true
 
 			await this.$nextTick() // Wait for next tick to have the canvas in the DOM
 
 			this.drawBlurhash()
+
+			// Always queue — the service worker still serves cached
+			// responses instantly when the img src is set, but the queue
+			// controls how many src attributes are set at once to prevent
+			// HTTP/2 connection saturation.
+			this.queueLoad()
+		},
+
+		/**
+		 * Acquire a concurrency slot before setting image src attributes.
+		 * This prevents HTTP/2 connection saturation from thousands of
+		 * simultaneous preview requests.
+		 */
+		async queueLoad() {
+			const { promise, cancel } = acquireSlot()
+			this._cancelSlot = cancel
+			this._slotHeld = true
+
+			await promise
+
+			// Component may have been destroyed or file changed while waiting
+			if (this._destroyed) {
+				releaseSlot()
+				this._slotHeld = false
+				return
+			}
+
+			this.activeSrcSmall = this.srcSmall
+			this.activeSrcLarge = this.srcLarge
+		},
+
+		/**
+		 * Release the queue slot once all image loads for this item are done.
+		 */
+		checkRelease() {
+			if (!this._slotHeld) return
+			const smallDone = this.loadedSmall || this.errorSmall
+			const largeDone = this.loadedLarge || this.errorLarge
+			if (smallDone && largeDone) {
+				releaseSlot()
+				this._slotHeld = false
+			}
+		},
+
+		/**
+		 * Cancel any pending queue wait and release held slot.
+		 */
+		cancelSlot() {
+			this._destroyed = true
+			if (this._cancelSlot) {
+				this._cancelSlot()
+				this._cancelSlot = null
+			}
+			if (this._slotHeld) {
+				releaseSlot()
+				this._slotHeld = false
+			}
 		},
 
 		emitClick() {
@@ -207,18 +269,22 @@ export default {
 
 		onLoadSmall() {
 			this.loadedSmall = true
+			this.checkRelease()
 		},
 
 		onLoadLarge() {
 			this.loadedLarge = true
+			this.checkRelease()
 		},
 
 		onErrorSmall() {
 			this.errorSmall = true
+			this.checkRelease()
 		},
 
 		onErrorLarge() {
 			this.errorLarge = true
+			this.checkRelease()
 		},
 
 		onToggle(value) {
