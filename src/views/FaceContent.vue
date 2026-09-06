@@ -282,7 +282,10 @@ export default {
 		},
 
 		faceFileIds(): string[] {
-			return this.facesFiles[this.faceName] || []
+			// Only ids with file data loaded in the store: the DAV listing can
+			// reference files that were removed or are not yet fetched, and
+			// FilesListViewer uses this list for layout and selection too.
+			return (this.facesFiles[this.faceName] || []).filter((id) => this.files[id])
 		},
 
 		shouldFavoriteSelection(): boolean {
@@ -305,9 +308,14 @@ export default {
 
 	methods: {
 		openViewer(fileId: string) {
+			if (!this.files[fileId]) {
+				return
+			}
 			window.OCA.Viewer.open({
 				fileInfo: toViewerFileInfo(this.files[fileId]),
-				list: this.faceFileIds.map((fileId) => toViewerFileInfo(this.files[fileId])),
+				list: this.faceFileIds
+					.filter((fileId) => this.files[fileId])
+					.map((fileId) => toViewerFileInfo(this.files[fileId])),
 			})
 		},
 

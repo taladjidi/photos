@@ -130,7 +130,7 @@ export default defineComponent({
 
 				const fileIds = fetchedFiles.map((file) => file.fileid?.toString() as string)
 
-				this.$store.dispatch('appendFiles', fetchedFiles)
+				await this.$store.dispatch('appendFiles', fetchedFiles)
 
 				if (fetchedFiles.length > 0) {
 					await this.$store.commit('addFilesToFace', { faceName, fileIdsToAdd: fileIds })
@@ -188,7 +188,7 @@ export default defineComponent({
 					})
 
 				const fileIds = [...new Set(fetchedFiles.map((file) => '' + file.fileid))]
-				this.$store.dispatch('appendFiles', fetchedFiles)
+				await this.$store.dispatch('appendFiles', fetchedFiles)
 
 				if (fetchedFiles.length > 0) {
 					await this.$store.commit('addUnassignedFiles', { fileIdsToAdd: fileIds })
