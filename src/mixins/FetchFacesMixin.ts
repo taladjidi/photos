@@ -17,11 +17,17 @@ import { getPropFind } from '../services/DavRequest.ts'
 import logger from '../services/logger.js'
 import AbortControllerMixin from './AbortControllerMixin.js'
 
-const recognizeDAVProps = [
-	'<nc:face-detections/>',
+// The face list only needs a cover image and a count.
+const faceListDAVProps = [
 	'<nc:face-preview-image/>',
-	'<nc:realpath/>',
 	'<nc:nbItems/>',
+]
+
+// Cluster contents additionally need realpath to resolve files, and the
+// detections themselves.
+const faceContentDAVProps = [
+	'<nc:face-detections/>',
+	'<nc:realpath/>',
 ]
 
 type FaceNode = File & {
@@ -71,7 +77,7 @@ export default defineComponent({
 				this.errorFetchingFaces = null
 
 				const { data: fetchedRawFaces } = await davClient.getDirectoryContents(`/recognize/${getCurrentUser()?.uid}/faces/`, {
-					data: getPropFind(recognizeDAVProps),
+					data: getPropFind(faceListDAVProps),
 					details: true,
 					signal: this.abortController.signal,
 				}) as ResponseDataDetailed<FileStat[]>
@@ -108,7 +114,7 @@ export default defineComponent({
 				const { data: fetchedRawFiles } = await davClient.getDirectoryContents(
 					`/recognize/${getCurrentUser()?.uid}/faces/${faceName}`,
 					{
-						data: getPropFind(recognizeDAVProps),
+						data: getPropFind(faceContentDAVProps),
 						details: true,
 						signal: this.abortController.signal,
 					},
@@ -167,7 +173,7 @@ export default defineComponent({
 				const { data: fetchedRawFiles } = await davClient.getDirectoryContents(
 					`/recognize/${getCurrentUser()?.uid}/unassigned-faces`,
 					{
-						data: getPropFind(recognizeDAVProps),
+						data: getPropFind(faceContentDAVProps),
 						details: true,
 						signal: this.abortController.signal,
 					},
@@ -214,7 +220,7 @@ export default defineComponent({
 				const { data: unassignedFacesRoot } = await davClient.stat(
 					`/recognize/${getCurrentUser()?.uid}/unassigned-faces`,
 					{
-						data: getPropFind(recognizeDAVProps),
+						data: getPropFind(faceContentDAVProps),
 						details: true,
 						signal: this.abortController.signal,
 					},
