@@ -175,8 +175,8 @@ export default {
 		if (this.$refs.imgSmall !== undefined) {
 			(this.$refs.imgSmall as HTMLImageElement).src = ''
 		}
-		if (this.$refs.srcLarge !== undefined) {
-			(this.$refs.srcLarge as HTMLImageElement).src = ''
+		if (this.$refs.imgLarge !== undefined) {
+			(this.$refs.imgLarge as HTMLImageElement).src = ''
 		}
 	},
 
