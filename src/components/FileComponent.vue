@@ -33,10 +33,10 @@
 						aria-hidden="true" />
 
 					<img
-						v-if="!hasBlurhash && !loadedLarge && (loadedSmall || !errorSmall)"
+						v-if="!hasBlurhash && !loadedLarge && (loadedSmall || (activeSrcSmall && !errorSmall))"
 						ref="imgSmall"
 						:key="`${file.basename}-small`"
-						:src="srcSmall"
+						:src="activeSrcSmall"
 						:alt="file.basename"
 						:decoding="loadedSmall ? 'sync' : 'async'"
 						:fetchpriority="loadedSmall ? 'high' : 'low'"
@@ -45,10 +45,10 @@
 						@error="onErrorSmall">
 
 					<img
-						v-if="loadedLarge || ((hasBlurhash || loadedSmall || errorSmall) && !errorLarge)"
+						v-if="loadedLarge || (activeSrcLarge && (hasBlurhash || loadedSmall || errorSmall) && !errorLarge)"
 						ref="imgLarge"
 						:key="`${file.basename}-large`"
-						:src="srcLarge"
+						:src="activeSrcLarge"
 						:alt="file.basename"
 						:decoding="loadedLarge ? 'sync' : 'async'"
 						:fetchpriority="loadedLarge ? 'high' : 'low'"
@@ -85,7 +85,7 @@ import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwit
 import PlayCircleOutlineIcon from 'vue-material-design-icons/PlayCircleOutline.vue'
 import VideoOutline from 'vue-material-design-icons/VideoOutline.vue'
 import FavoriteIcon from './FavoriteIcon.vue'
-import { isCachedPreview } from '../services/PreviewService.js'
+import { acquireSlot, releaseSlot } from '../services/PreviewQueue.js'
 
 export default {
 	name: 'FileComponent',
@@ -122,6 +122,8 @@ export default {
 			loadedLarge: false,
 			errorLarge: false,
 			isMobile: useIsMobile(),
+			activeSrcSmall: '',
+			activeSrcLarge: '',
 		}
 	},
 
@@ -156,11 +158,16 @@ export default {
 
 	watch: {
 		async file() {
+			this.cancelSlot()
+			this._destroyed = false // reset: FilesListViewer recycles components
+
 			this.initialized = false
 			this.loadedSmall = false
 			this.errorSmall = false
 			this.loadedLarge = false
 			this.errorLarge = false
+			this.activeSrcSmall = ''
+			this.activeSrcLarge = ''
 
 			await this.init()
 		},
@@ -171,6 +178,8 @@ export default {
 	},
 
 	beforeDestroy() {
+		this.cancelSlot()
+
 		// cancel any pending load
 		if (this.$refs.imgSmall !== undefined) {
 			(this.$refs.imgSmall as HTMLImageElement).src = ''
@@ -182,16 +191,65 @@ export default {
 
 	methods: {
 		async init() {
-			[this.loadedSmall, this.loadedLarge] = await Promise.all([
-				await isCachedPreview(this.srcSmall),
-				await isCachedPreview(this.srcLarge),
-			])
-
 			this.initialized = true
 
 			await this.$nextTick() // Wait for next tick to have the canvas in the DOM
 
 			this.drawBlurhash()
+
+			// Always queue. The service worker still serves cached responses
+			// instantly once the src is set; the queue only bounds how many
+			// src attributes are set at once.
+			this.queueLoad()
+		},
+
+		/**
+		 * Acquire a concurrency slot before setting the image src attributes,
+		 * so we do not saturate the HTTP/2 connection.
+		 */
+		async queueLoad() {
+			const { promise, cancel } = acquireSlot()
+			this._cancelSlot = cancel
+			this._slotHeld = true
+
+			await promise
+
+			// The component may have been destroyed, or the file swapped,
+			// while we were waiting for a slot.
+			if (this._destroyed) {
+				releaseSlot()
+				this._slotHeld = false
+				return
+			}
+
+			this.activeSrcSmall = this.srcSmall
+			this.activeSrcLarge = this.srcLarge
+		},
+
+		/** Release the slot once both image loads have settled. */
+		checkRelease() {
+			if (!this._slotHeld) {
+				return
+			}
+			const smallDone = this.loadedSmall || this.errorSmall
+			const largeDone = this.loadedLarge || this.errorLarge
+			if (smallDone && largeDone) {
+				releaseSlot()
+				this._slotHeld = false
+			}
+		},
+
+		/** Cancel a pending wait and release any held slot. */
+		cancelSlot() {
+			this._destroyed = true
+			if (this._cancelSlot) {
+				this._cancelSlot()
+				this._cancelSlot = null
+			}
+			if (this._slotHeld) {
+				releaseSlot()
+				this._slotHeld = false
+			}
 		},
 
 		emitClick() {
@@ -200,18 +258,22 @@ export default {
 
 		onLoadSmall() {
 			this.loadedSmall = true
+			this.checkRelease()
 		},
 
 		onLoadLarge() {
 			this.loadedLarge = true
+			this.checkRelease()
 		},
 
 		onErrorSmall() {
 			this.errorSmall = true
+			this.checkRelease()
 		},
 
 		onErrorLarge() {
 			this.errorLarge = true
+			this.checkRelease()
 		},
 
 		onToggle(value) {
