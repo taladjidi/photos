@@ -7,11 +7,15 @@
 	<div class="face-cover" :class="[small && 'face-cover--small']" @click="$emit('click')">
 		<div class="face-cover__crop-container">
 			<img
+				v-if="activeSrc"
 				ref="image"
 				class="face-cover__image"
-				:src="coverUrl"
+				:src="activeSrc"
 				:style="coverDimensions"
-				@load="onCoverImageLoad">
+				loading="lazy"
+				decoding="async"
+				@load="onLoaded"
+				@error="onLoaded">
 		</div>
 		<div class="face-cover__details">
 			<div v-if="!baseName.match(/^[0-9]+$/)" class="face-cover__details__first-line">
@@ -31,6 +35,7 @@ import type { Collection } from '../../services/collectionFetcher.js'
 
 import { translatePlural as n } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
+import { acquireSlot, releaseSlot } from '../../services/PreviewQueue.js'
 import FaceCoverMixin from '../../mixins/FaceCoverMixin.js'
 import FetchFacesMixin from '../../mixins/FetchFacesMixin.js'
 
@@ -57,6 +62,16 @@ export default {
 	data() {
 		return {
 			observer: null,
+			// Set once a queue slot is free. The Faces overview renders one
+			// cover per cluster — hundreds of them — and setting every src at
+			// once saturates php-fpm: measured 700 requests at an implied
+			// concurrency of 68, so each spent ~0.7s queueing for ~25ms of work,
+			// and unrelated requests (including the page's own PROPFIND) queued
+			// behind them. The photo grid already goes through this semaphore.
+			activeSrc: '',
+			slotHeld: false,
+			cancelSlot: null,
+			destroyed: false,
 		}
 	},
 
@@ -82,7 +97,7 @@ export default {
 				return ''
 			}
 
-			return generateUrl(`/apps/photos/api/v1/preview/${this.cover.fileid}?x=${512}&y=${512}`)
+			return generateUrl(`/apps/photos/api/v1/preview/${this.cover.fileid}?x=${1024}&y=${1024}`)
 		},
 
 		cover() {
@@ -98,8 +113,54 @@ export default {
 		},
 	},
 
+	async mounted() {
+		await this.queueLoad()
+	},
+
+	beforeDestroy() {
+		this.destroyed = true
+		if (this.cancelSlot) {
+			this.cancelSlot()
+			this.cancelSlot = null
+		}
+		if (this.slotHeld) {
+			releaseSlot()
+			this.slotHeld = false
+		}
+	},
+
 	methods: {
 		n,
+
+		/** Wait for a slot before asking the server for this cover. */
+		async queueLoad() {
+			if (!this.coverUrl) {
+				return
+			}
+
+			const { promise, cancel } = acquireSlot()
+			this.cancelSlot = cancel
+			this.slotHeld = true
+
+			await promise
+
+			if (this.destroyed) {
+				releaseSlot()
+				this.slotHeld = false
+				return
+			}
+
+			this.activeSrc = this.coverUrl
+		},
+
+		/** Free the slot whether the image loaded or failed. */
+		onLoaded(event) {
+			this.onCoverImageLoad(event)
+			if (this.slotHeld) {
+				releaseSlot()
+				this.slotHeld = false
+			}
+		},
 	},
 }
 </script>
