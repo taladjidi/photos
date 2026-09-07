@@ -30,6 +30,12 @@ const faceContentDAVProps = [
 	'<nc:realpath/>',
 ]
 
+// Counting the unassigned-faces collection is a single PROPFIND for one
+// number; it needs nbItems and nothing else.
+const faceCountDAVProps = [
+	'<nc:nbItems/>',
+]
+
 type FaceNode = File & {
 	attributes: {
 		'face-detections': string
@@ -220,7 +226,7 @@ export default defineComponent({
 				const { data: unassignedFacesRoot } = await davClient.stat(
 					`/recognize/${getCurrentUser()?.uid}/unassigned-faces`,
 					{
-						data: getPropFind(faceContentDAVProps),
+						data: getPropFind(faceCountDAVProps),
 						details: true,
 						signal: this.abortController.signal,
 					},
