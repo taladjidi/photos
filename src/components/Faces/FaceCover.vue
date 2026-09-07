@@ -10,7 +10,8 @@
 				ref="image"
 				class="face-cover__image"
 				:src="coverUrl"
-				:style="coverDimensions">
+				:style="coverDimensions"
+				@load="onCoverImageLoad">
 		</div>
 		<div class="face-cover__details">
 			<div v-if="!baseName.match(/^[0-9]+$/)" class="face-cover__details__first-line">
