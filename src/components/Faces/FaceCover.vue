@@ -12,7 +12,6 @@
 				class="face-cover__image"
 				:src="activeSrc"
 				:style="coverDimensions"
-				loading="lazy"
 				decoding="async"
 				@load="onLoaded"
 				@error="onLoaded">
@@ -35,6 +34,7 @@ import type { Collection } from '../../services/collectionFetcher.js'
 
 import { translatePlural as n } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
+import { markRaw } from 'vue'
 import FaceCoverMixin from '../../mixins/FaceCoverMixin.js'
 import FetchFacesMixin from '../../mixins/FetchFacesMixin.js'
 import { createSlotHolder } from '../../services/PreviewQueue.js'
@@ -61,6 +61,7 @@ export default {
 
 	data() {
 		return {
+			slotHolder: markRaw(createSlotHolder()),
 			observer: null,
 			// Set once a queue slot is free. The Faces overview renders one
 			// cover per cluster — hundreds of them — and setting every src at
@@ -110,8 +111,12 @@ export default {
 		},
 	},
 
-	created() {
-		this.slotHolder = createSlotHolder()
+	watch: {
+		coverUrl() {
+			this.slotHolder.release()
+			this.activeSrc = ''
+			this.queueLoad()
+		},
 	},
 
 	async mounted() {

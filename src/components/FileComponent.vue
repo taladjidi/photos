@@ -52,7 +52,6 @@
 						:alt="file.basename"
 						:decoding="loadedLarge ? 'sync' : 'async'"
 						:fetchpriority="loadedLarge ? 'high' : 'low'"
-						:loading="loadedLarge ? undefined : 'lazy'"
 						@load="onLoadLarge"
 						@error="onErrorLarge">
 				</template>
@@ -81,6 +80,7 @@ import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
 import { useIsMobile } from '@nextcloud/vue/composables/useIsMobile'
 import { decode } from 'blurhash'
+import { markRaw } from 'vue'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import PlayCircleOutlineIcon from 'vue-material-design-icons/PlayCircleOutline.vue'
 import VideoOutline from 'vue-material-design-icons/VideoOutline.vue'
@@ -116,6 +116,7 @@ export default {
 
 	data() {
 		return {
+			slotHolder: markRaw(createSlotHolder()),
 			initialized: false,
 			loadedSmall: false,
 			errorSmall: false,
@@ -170,10 +171,6 @@ export default {
 
 			await this.init()
 		},
-	},
-
-	created() {
-		this.slotHolder = createSlotHolder()
 	},
 
 	async mounted() {
