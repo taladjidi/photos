@@ -85,7 +85,7 @@ import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwit
 import PlayCircleOutlineIcon from 'vue-material-design-icons/PlayCircleOutline.vue'
 import VideoOutline from 'vue-material-design-icons/VideoOutline.vue'
 import FavoriteIcon from './FavoriteIcon.vue'
-import { acquireSlot, releaseSlot } from '../services/PreviewQueue.js'
+import { createSlotHolder } from '../services/PreviewQueue.js'
 
 export default {
 	name: 'FileComponent',
@@ -159,7 +159,6 @@ export default {
 	watch: {
 		async file() {
 			this.cancelSlot()
-			this._destroyed = false // reset: FilesListViewer recycles components
 
 			this.initialized = false
 			this.loadedSmall = false
@@ -171,6 +170,10 @@ export default {
 
 			await this.init()
 		},
+	},
+
+	created() {
+		this.slotHolder = createSlotHolder()
 	},
 
 	async mounted() {
@@ -208,17 +211,8 @@ export default {
 		 * so we do not saturate the HTTP/2 connection.
 		 */
 		async queueLoad() {
-			const { promise, cancel } = acquireSlot()
-			this._cancelSlot = cancel
-			this._slotHeld = true
-
-			await promise
-
-			// The component may have been destroyed, or the file swapped,
-			// while we were waiting for a slot.
-			if (this._destroyed) {
-				releaseSlot()
-				this._slotHeld = false
+			// False if the component was destroyed or the file swapped while waiting.
+			if (!(await this.slotHolder.acquire())) {
 				return
 			}
 
@@ -228,28 +222,20 @@ export default {
 
 		/** Release the slot once both image loads have settled. */
 		checkRelease() {
-			if (!this._slotHeld) {
+			if (!this.slotHolder.held) {
 				return
 			}
-			const smallDone = this.loadedSmall || this.errorSmall
+			// Blurhash files render no small image, so there is nothing to wait for.
+			const smallDone = !this.hasBlurhash || this.loadedSmall || this.errorSmall
 			const largeDone = this.loadedLarge || this.errorLarge
 			if (smallDone && largeDone) {
-				releaseSlot()
-				this._slotHeld = false
+				this.slotHolder.release()
 			}
 		},
 
 		/** Cancel a pending wait and release any held slot. */
 		cancelSlot() {
-			this._destroyed = true
-			if (this._cancelSlot) {
-				this._cancelSlot()
-				this._cancelSlot = null
-			}
-			if (this._slotHeld) {
-				releaseSlot()
-				this._slotHeld = false
-			}
+			this.slotHolder.release()
 		},
 
 		emitClick() {

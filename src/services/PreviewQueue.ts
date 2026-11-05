@@ -56,6 +56,14 @@ export function acquireSlot(): { promise: Promise<void>, cancel: () => void } {
  * Release a loading slot, allowing the next queued waiter to proceed.
  */
 export function releaseSlot(): void {
+	if (active === 0) {
+		// A stray release would push the count negative and let the cap drift upward.
+		if (process.env.NODE_ENV !== 'production') {
+			// eslint-disable-next-line no-console
+			console.warn('[PreviewQueue] releaseSlot() with no active slot')
+		}
+		return
+	}
 	while (waiters.length > 0) {
 		const next = waiters.shift()!
 		if (!next.cancelled) {
@@ -64,4 +72,52 @@ export function releaseSlot(): void {
 		}
 	}
 	active--
+}
+
+/** Number of granted slots, for tests and debugging. */
+export function activeSlotCount(): number {
+	return active
+}
+
+/**
+ * Per-component handle on the queue. A slot counts as held only once it is
+ * granted, so release() while still waiting only cancels the wait and never
+ * frees a slot that was never taken.
+ */
+export function createSlotHolder() {
+	let held = false
+	let pending: { cancel: () => void } | null = null
+
+	return {
+		get held(): boolean {
+			return held
+		},
+
+		/** Resolves true once a slot is held, false if release() ran first. */
+		async acquire(): Promise<boolean> {
+			const wait = acquireSlot()
+			const ticket = { cancel: wait.cancel }
+			pending = ticket
+			await wait.promise
+			if (pending !== ticket) {
+				// Released while the grant was in flight: give the slot back.
+				releaseSlot()
+				return false
+			}
+			pending = null
+			held = true
+			return true
+		},
+
+		release(): void {
+			if (pending) {
+				pending.cancel()
+				pending = null
+			}
+			if (held) {
+				held = false
+				releaseSlot()
+			}
+		},
+	}
 }

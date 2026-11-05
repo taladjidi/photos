@@ -35,9 +35,9 @@ import type { Collection } from '../../services/collectionFetcher.js'
 
 import { translatePlural as n } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
-import { acquireSlot, releaseSlot } from '../../services/PreviewQueue.js'
 import FaceCoverMixin from '../../mixins/FaceCoverMixin.js'
 import FetchFacesMixin from '../../mixins/FetchFacesMixin.js'
+import { createSlotHolder } from '../../services/PreviewQueue.js'
 
 export default {
 	name: 'FaceCover',
@@ -69,9 +69,6 @@ export default {
 			// and unrelated requests (including the page's own PROPFIND) queued
 			// behind them. The photo grid already goes through this semaphore.
 			activeSrc: '',
-			slotHeld: false,
-			cancelSlot: null,
-			destroyed: false,
 		}
 	},
 
@@ -113,20 +110,16 @@ export default {
 		},
 	},
 
+	created() {
+		this.slotHolder = createSlotHolder()
+	},
+
 	async mounted() {
 		await this.queueLoad()
 	},
 
 	beforeDestroy() {
-		this.destroyed = true
-		if (this.cancelSlot) {
-			this.cancelSlot()
-			this.cancelSlot = null
-		}
-		if (this.slotHeld) {
-			releaseSlot()
-			this.slotHeld = false
-		}
+		this.slotHolder.release()
 	},
 
 	methods: {
@@ -138,28 +131,21 @@ export default {
 				return
 			}
 
-			const { promise, cancel } = acquireSlot()
-			this.cancelSlot = cancel
-			this.slotHeld = true
-
-			await promise
-
-			if (this.destroyed) {
-				releaseSlot()
-				this.slotHeld = false
+			if (!(await this.slotHolder.acquire())) {
 				return
 			}
 
 			this.activeSrc = this.coverUrl
 		},
 
-		/** Free the slot whether the image loaded or failed. */
+		/**
+		 * Free the slot whether the image loaded or failed.
+		 *
+		 * @param {Event} event
+		 */
 		onLoaded(event) {
 			this.onCoverImageLoad(event)
-			if (this.slotHeld) {
-				releaseSlot()
-				this.slotHeld = false
-			}
+			this.slotHolder.release()
 		},
 	},
 }
