@@ -323,6 +323,8 @@ export default {
 			try {
 				this.loadingCount++
 				await this.$store.dispatch('removeFilesFromFace', { faceName: this.faceName, fileIdsToRemove: fileIds })
+				await this.fetchFaces(true)
+				await this.fetchFaceContent(this.faceName, true)
 				this.resetSelection()
 			} catch (error) {
 				logger.error(error)
