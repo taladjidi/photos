@@ -24,6 +24,15 @@
 		}
 	}
 
+	// A server-side face crop (square JPEG): it must fill the round container. Without a
+	// size the 256 px crop renders at natural size and the circle shows its top-left quarter.
+	&__image--fill {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
 	&:hover, &:focus {
 		background: var(--color-background-hover);
 	}

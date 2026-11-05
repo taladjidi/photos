@@ -10,6 +10,7 @@
 				v-if="apiCover || activeSrc"
 				ref="image"
 				class="face-cover__image"
+				:class="{ 'face-cover__image--fill': apiCover }"
 				:src="apiCover || activeSrc"
 				:style="apiCover ? undefined : coverDimensions"
 				decoding="async"
