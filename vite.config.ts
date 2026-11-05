@@ -98,7 +98,7 @@ export default createAppConfig({
 			},
 			server: {
 				deps: {
-					inline: [/@nextcloud\/vue/, /@mdi\/svg/],
+					inline: [/@nextcloud\/vue/, /@nextcloud\/files/, /@mdi\/svg/],
 				},
 			},
 		} as UserConfig,

@@ -25,7 +25,14 @@
 			</NcEmptyContent>
 		</div>
 
-		<div v-else-if="!noFaces" class="faces__list">
+		<NcTextField
+			v-if="!noFaces"
+			class="faces__filter"
+			:value="filterInput"
+			:label="t('photos', 'Filter by name')"
+			@update:value="onFilterInput" />
+
+		<div v-if="!noFaces" class="faces__list">
 			<RouterLink
 				v-for="face in orderedFaces"
 				:key="face.basename"
@@ -48,6 +55,7 @@ import { t } from '@nextcloud/l10n'
 import { RouterLink } from 'vue-router'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
+import NcTextField from '@nextcloud/vue/components/NcTextField'
 import AccountBoxMultipleOutline from 'vue-material-design-icons/AccountBoxMultipleOutline.vue'
 import FaceCover from '../components/Faces/FaceCover.vue'
 import UnassignedFacesCover from '../components/Faces/UnassignedFacesCover.vue'
@@ -60,11 +68,20 @@ export default {
 		FaceCover,
 		NcEmptyContent,
 		NcLoadingIcon,
+		NcTextField,
 		RouterLink,
 		AccountBoxMultipleOutline,
 	},
 
 	mixins: [FetchFacesMixin],
+
+	data() {
+		return {
+			filterInput: '',
+			filter: '',
+			filterTimer: undefined as undefined | ReturnType<typeof setTimeout>,
+		}
+	},
 
 	computed: {
 		facesFiles() {
@@ -80,7 +97,9 @@ export default {
 		},
 
 		orderedFaces() {
-			return Object.values(this.faces as Collection[]).sort((a, b) => {
+			// shortcut: filters the loaded list only; the API list is complete (min=1), so search?q= is unused.
+			const needle = this.filter.trim().toLowerCase()
+			return Object.values(this.faces as Collection[]).filter((f) => f.basename.toLowerCase().includes(needle)).sort((a, b) => {
 				if (a.attributes.nbItems && b.attributes.nbItems) {
 					return b.attributes.nbItems - a.attributes.nbItems
 				}
@@ -94,6 +113,14 @@ export default {
 
 	methods: {
 		t,
+
+		onFilterInput(value: string) {
+			this.filterInput = value
+			clearTimeout(this.filterTimer)
+			this.filterTimer = setTimeout(() => {
+				this.filter = value
+			}, 250)
+		},
 	},
 }
 </script>
@@ -107,6 +134,11 @@ export default {
 
 	@media only screen and (max-width: 1020px) {
 		padding: 0;
+	}
+
+	&__filter {
+		max-width: 320px;
+		margin-top: 12px;
 	}
 
 	&__header {

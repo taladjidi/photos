@@ -7,11 +7,11 @@
 	<div class="face-cover" :class="[small && 'face-cover--small']" @click="$emit('click')">
 		<div class="face-cover__crop-container">
 			<img
-				v-if="activeSrc"
+				v-if="apiCover || activeSrc"
 				ref="image"
 				class="face-cover__image"
-				:src="activeSrc"
-				:style="coverDimensions"
+				:src="apiCover || activeSrc"
+				:style="apiCover ? undefined : coverDimensions"
 				decoding="async"
 				@load="onLoaded"
 				@error="onLoaded">
@@ -98,7 +98,16 @@ export default {
 			return generateUrl(`/apps/photos/api/v1/preview/${this.cover.fileid}?x=${1024}&y=${1024}`)
 		},
 
+		/** Signed crop from the Python API: a plain JPEG, no framing maths. */
+		apiCover(): string {
+			return this.face.attributes.cover || ''
+		},
+
 		cover() {
+			if (this.apiCover) {
+				return null
+			}
+
 			return this.getFaceCover(this.face.basename)
 		},
 
@@ -132,7 +141,7 @@ export default {
 
 		/** Wait for a slot before asking the server for this cover. */
 		async queueLoad() {
-			if (!this.coverUrl) {
+			if (this.apiCover || !this.coverUrl) {
 				return
 			}
 

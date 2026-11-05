@@ -14,6 +14,7 @@ import he from 'he'
 import { defineComponent } from 'vue'
 import { davClient } from '../services/DavClient.ts'
 import { getPropFind } from '../services/DavRequest.ts'
+import { apiDown, apiFailed, apiFileToNode, clusterToFace, fetchClusterFiles, fetchClusters } from '../services/FacesApi.ts'
 import logger from '../services/logger.js'
 import AbortControllerMixin from './AbortControllerMixin.js'
 
@@ -69,13 +70,29 @@ export default defineComponent({
 	},
 
 	methods: {
-		async fetchFaces() {
+		async fetchFaces(force = false) {
 			if (this.loadingFaces) {
 				return
 			}
 
-			if (Object.keys(this.faces).length) {
+			if (!force && Object.keys(this.faces).length) {
 				return
+			}
+
+			if (!apiDown()) {
+				try {
+					this.loadingFaces = true
+					this.errorFetchingFaces = null
+					const faces = (await fetchClusters()).map(clusterToFace)
+					const stale = Object.keys(this.faces).filter((name) => !faces.some((f) => f.basename === name))
+					this.$store.commit('removeFaces', { faceNames: stale })
+					this.$store.dispatch('addFaces', { faces })
+					return
+				} catch (error) {
+					apiFailed(error)
+				} finally {
+					this.loadingFaces = false
+				}
 			}
 
 			try {
@@ -111,6 +128,25 @@ export default defineComponent({
 
 			if (!force && this.facesFiles[faceName] && this.facesFiles[faceName].length) {
 				return
+			}
+
+			const clusterId = this.faces[faceName]?.attributes?.clusterId
+			if (clusterId !== undefined && !apiDown()) {
+				try {
+					this.errorFetchingFiles = null
+					this.loadingFiles = true
+					const cluster = await fetchClusterFiles(clusterId)
+					const files = cluster.files.map((f) => apiFileToNode(f, cluster))
+					await this.$store.dispatch('appendFiles', files)
+					if (files.length > 0) {
+						this.$store.commit('addFilesToFace', { faceName, fileIdsToAdd: files.map((f) => '' + f.fileid) })
+					}
+					return
+				} catch (error) {
+					apiFailed(error)
+				} finally {
+					this.loadingFiles = false
+				}
 			}
 
 			try {
