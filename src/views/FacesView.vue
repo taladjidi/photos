@@ -28,9 +28,9 @@
 		<NcTextField
 			v-if="!noFaces"
 			class="faces__filter"
-			:value="filterInput"
+			:model-value="filterInput"
 			:label="t('photos', 'Filter by name')"
-			@update:value="onFilterInput" />
+			@update:model-value="onFilterInput" />
 
 		<div v-if="!noFaces" class="faces__list">
 			<RouterLink
@@ -60,6 +60,7 @@ import AccountBoxMultipleOutline from 'vue-material-design-icons/AccountBoxMulti
 import FaceCover from '../components/Faces/FaceCover.vue'
 import UnassignedFacesCover from '../components/Faces/UnassignedFacesCover.vue'
 import FetchFacesMixin from '../mixins/FetchFacesMixin.js'
+import { apiDown, apiFailed, clusterToFace, searchClusters } from '../services/FacesApi.ts'
 
 export default {
 	name: 'FacesView',
@@ -97,7 +98,6 @@ export default {
 		},
 
 		orderedFaces() {
-			// shortcut: filters the loaded list only; the API list is complete (min=1), so search?q= is unused.
 			const needle = this.filter.trim().toLowerCase()
 			return Object.values(this.faces as Collection[]).filter((f) => f.basename.toLowerCase().includes(needle)).sort((a, b) => {
 				if (a.attributes.nbItems && b.attributes.nbItems) {
@@ -119,6 +119,14 @@ export default {
 			clearTimeout(this.filterTimer)
 			this.filterTimer = setTimeout(() => {
 				this.filter = value
+				// The overview lists clusters of 5+ photos; ask the server for every
+				// cluster matching the name so a small named one is still found.
+				const q = value.trim()
+				if (q && !apiDown()) {
+					searchClusters(q)
+						.then((found) => this.$store.dispatch('addFaces', { faces: found.map(clusterToFace) }))
+						.catch(apiFailed)
+				}
 			}, 250)
 		},
 	},

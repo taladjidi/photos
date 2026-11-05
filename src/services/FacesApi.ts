@@ -84,7 +84,10 @@ async function get<T>(path: string, params: Record<string, string | number> = {}
 	}
 }
 
-export const fetchClusters = (min = 1) => get<ApiCluster[]>('/clusters', { min })
+// Same threshold as recognize's FacesHome::MIN_LISTED_CLUSTER_SIZE: the long tail of
+// 2-4 photo clusters is mostly noise. Named small clusters are reached via searchClusters.
+export const MIN_LISTED_CLUSTER_SIZE = 5
+export const fetchClusters = (min = MIN_LISTED_CLUSTER_SIZE) => get<ApiCluster[]>('/clusters', { min })
 export const searchClusters = (q: string) => get<ApiCluster[]>('/search', { q })
 export const fetchClusterPage = (id: number, offset = 0, limit = PAGE) => get<ApiClusterFiles>(`/clusters/${id}`, { offset, limit })
 
