@@ -14,7 +14,7 @@ import he from 'he'
 import { defineComponent } from 'vue'
 import { davClient } from '../services/DavClient.ts'
 import { getPropFind } from '../services/DavRequest.ts'
-import { apiDown, apiFailed, apiFileToNode, clusterToFace, fetchClusterFiles, fetchClusters } from '../services/FacesApi.ts'
+import { apiDown, apiFailed, apiFileToNode, clusterToFace, fetchClusterFiles, fetchClusterPage, fetchClusters, searchClusters } from '../services/FacesApi.ts'
 import logger from '../services/logger.js'
 import AbortControllerMixin from './AbortControllerMixin.js'
 
@@ -59,8 +59,8 @@ export default defineComponent({
 
 	mixins: [AbortControllerMixin],
 
-	async beforeMount() {
-		this.fetchFaces()
+	beforeMount() {
+		this.facesPromise = this.fetchFaces()
 	},
 
 	computed: {
@@ -70,7 +70,7 @@ export default defineComponent({
 	},
 
 	methods: {
-		async fetchFaces(force = false) {
+		async fetchFaces(force = false, keep = undefined) {
 			if (this.loadingFaces) {
 				return
 			}
@@ -84,7 +84,7 @@ export default defineComponent({
 					this.loadingFaces = true
 					this.errorFetchingFaces = null
 					const faces = (await fetchClusters()).map(clusterToFace)
-					const stale = Object.keys(this.faces).filter((name) => !faces.some((f) => f.basename === name))
+					const stale = Object.keys(this.faces).filter((name) => name !== keep && !faces.some((f) => f.basename === name))
 					this.$store.commit('removeFaces', { faceNames: stale })
 					this.$store.dispatch('addFaces', { faces })
 					return
@@ -130,7 +130,21 @@ export default defineComponent({
 				return
 			}
 
-			const clusterId = this.faces[faceName]?.attributes?.clusterId
+			let clusterId = this.faces[faceName]?.attributes?.clusterId
+			if (clusterId === undefined && !apiDown()) {
+				// A cluster below the overview's size threshold (opened by URL): resolve it by id or exact title.
+				try {
+					const found = /^\d+$/.test(faceName)
+						? await fetchClusterPage(Number(faceName), 0, 1)
+						: (await searchClusters(faceName)).find((c) => c.title === faceName)
+					if (found) {
+						await this.$store.dispatch('addFaces', { faces: [clusterToFace({ cover: null, ...found })] })
+						clusterId = found.id
+					}
+				} catch (error) {
+					apiFailed(error)
+				}
+			}
 			if (clusterId !== undefined && !apiDown()) {
 				try {
 					this.errorFetchingFiles = null

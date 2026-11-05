@@ -36,7 +36,8 @@
 			<RouterLink
 				v-for="face in orderedFaces"
 				:key="face.basename"
-				:to="`/faces/${encodeURIComponent(face.basename)}`">
+				:to="`/faces/${encodeURIComponent(face.basename)}`"
+				@click.native="openFace(face)">
 				<FaceCover :base-name="face.basename" />
 			</RouterLink>
 			<RouterLink
@@ -80,6 +81,8 @@ export default {
 		return {
 			filterInput: '',
 			filter: '',
+			// Search hits live here, not in the store, so clearing the filter drops them.
+			searchHits: [] as Collection[],
 			filterTimer: undefined as undefined | ReturnType<typeof setTimeout>,
 		}
 	},
@@ -97,9 +100,19 @@ export default {
 			return Object.keys(this.faces).length === 0
 		},
 
+		allFaces(): Collection[] {
+			const all = { ...this.faces } as Record<string, Collection>
+			if (this.filter.trim()) {
+				for (const hit of this.searchHits as Collection[]) {
+					all[hit.basename] ??= hit
+				}
+			}
+			return Object.values(all)
+		},
+
 		orderedFaces() {
 			const needle = this.filter.trim().toLowerCase()
-			return Object.values(this.faces as Collection[]).filter((f) => f.basename.toLowerCase().includes(needle)).sort((a, b) => {
+			return this.allFaces.filter((f) => f.basename.toLowerCase().includes(needle)).sort((a, b) => {
 				if (a.attributes.nbItems && b.attributes.nbItems) {
 					return b.attributes.nbItems - a.attributes.nbItems
 				}
@@ -122,12 +135,25 @@ export default {
 				// The overview lists clusters of 5+ photos; ask the server for every
 				// cluster matching the name so a small named one is still found.
 				const q = value.trim()
-				if (q && !apiDown()) {
+				if (!q) {
+					this.searchHits = []
+				} else if (!apiDown()) {
 					searchClusters(q)
-						.then((found) => this.$store.dispatch('addFaces', { faces: found.map(clusterToFace) }))
+						.then((found) => {
+							if (this.filter === value) {
+								this.searchHits = found.map(clusterToFace)
+							}
+						})
 						.catch(apiFailed)
 				}
 			}, 250)
+		},
+
+		// The cluster view reads the cluster from the store: add a search hit on click.
+		openFace(face: Collection) {
+			if (!this.faces[face.basename]) {
+				this.$store.dispatch('addFaces', { faces: [face] })
+			}
 		},
 	},
 }

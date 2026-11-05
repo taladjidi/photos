@@ -302,7 +302,9 @@ export default {
 		},
 	},
 
-	mounted() {
+	async mounted() {
+		// Let the overview load first so a cluster missing from it is resolved by the API, not DAV.
+		await this.facesPromise
 		this.fetchFaceContent(this.faceName)
 	},
 
@@ -323,7 +325,8 @@ export default {
 			try {
 				this.loadingCount++
 				await this.$store.dispatch('removeFilesFromFace', { faceName: this.faceName, fileIdsToRemove: fileIds })
-				await this.fetchFaces(true)
+				// Keep the open cluster even if it dropped below the overview's threshold.
+				await this.fetchFaces(true, this.faceName)
 				await this.fetchFaceContent(this.faceName, true)
 				this.resetSelection()
 			} catch (error) {
