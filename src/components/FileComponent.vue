@@ -86,6 +86,7 @@ import PlayCircleOutlineIcon from 'vue-material-design-icons/PlayCircleOutline.v
 import VideoOutline from 'vue-material-design-icons/VideoOutline.vue'
 import FavoriteIcon from './FavoriteIcon.vue'
 import { createSlotHolder } from '../services/PreviewQueue.js'
+import { lookupThumb } from '../services/ThumbsApi.ts'
 
 export default {
 	name: 'FileComponent',
@@ -213,8 +214,23 @@ export default {
 				return
 			}
 
-			this.activeSrcSmall = this.srcSmall
-			this.activeSrcLarge = this.srcLarge
+			const file = this.file
+			let small: string | null = null
+			let large: string | null = null
+			// Public shares stay on the PHP preview.
+			if (!this.$route?.params.token) {
+				[large, small] = await Promise.all([
+					lookupThumb(file.fileid, this.isMobile ? 256 : 1024),
+					this.hasBlurhash ? null : lookupThumb(file.fileid, 256),
+				])
+				// The slot was cancelled or the tile recycled while we looked up.
+				if (file !== this.file || !this.slotHolder.held) {
+					return
+				}
+			}
+
+			this.activeSrcSmall = small ?? this.srcSmall
+			this.activeSrcLarge = large ?? this.srcLarge
 		},
 
 		/** Release the slot once both image loads have settled. */
@@ -250,11 +266,20 @@ export default {
 		},
 
 		onErrorSmall() {
+			// A thumb that fails to load gets one retry through PHP before the tile gives up.
+			if (this.activeSrcSmall !== this.srcSmall) {
+				this.activeSrcSmall = this.srcSmall
+				return
+			}
 			this.errorSmall = true
 			this.checkRelease()
 		},
 
 		onErrorLarge() {
+			if (this.activeSrcLarge !== this.srcLarge) {
+				this.activeSrcLarge = this.srcLarge
+				return
+			}
 			this.errorLarge = true
 			this.checkRelease()
 		},

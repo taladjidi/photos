@@ -7,6 +7,10 @@ import { shallowMount, type Wrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import FileComponent from './FileComponent.vue'
 import { activeSlotCount, MAX_CONCURRENT } from '../services/PreviewQueue.js'
+import { lookupThumb } from '../services/ThumbsApi.ts'
+
+vi.mock('../services/ThumbsApi.ts', () => ({ lookupThumb: vi.fn() }))
+const lookup = lookupThumb as unknown as ReturnType<typeof vi.fn>
 
 /** Let the component's nextTick and queue continuations run. */
 const flush = () => new Promise((resolve) => setTimeout(resolve))
@@ -29,6 +33,7 @@ const mount = (file: ReturnType<typeof makeFile>) => {
 }
 
 beforeEach(() => {
+	lookup.mockReset().mockResolvedValue(null)
 	// jsdom has no canvas 2D context to draw the blurhash into.
 	vi.spyOn((FileComponent as any).methods, 'drawBlurhash').mockImplementation(() => {})
 })
@@ -93,5 +98,50 @@ describe('FileComponent slot handling', () => {
 		await flush()
 		expect((waiting.vm as any).activeSrcLarge).not.toBe('')
 		expect(activeSlotCount()).toBe(MAX_CONCURRENT)
+	})
+})
+
+describe('FileComponent thumbs', () => {
+	const thumbs = (id: number, size: number) => `/recognize-thumbs/${id}-${size}`
+
+	test('uses the thumb URLs, falls back to PHP once per img on error, and still releases the slot', async () => {
+		lookup.mockImplementation(async (id: number, size: number) => thumbs(id, size))
+		const wrapper = mount(makeFile(5))
+		const vm = wrapper.vm as any
+		await flush()
+		expect(vm.activeSrcSmall).toBe(thumbs(5, 256))
+		expect(vm.activeSrcLarge).toBe(thumbs(5, vm.isMobile ? 256 : 1024))
+
+		vm.onErrorSmall()
+		expect(vm.activeSrcSmall).toBe(vm.srcSmall) // PHP retry, not an error yet
+		expect(vm.errorSmall).toBe(false)
+		expect(activeSlotCount()).toBe(1)
+		vm.onErrorSmall() // the PHP image fails too
+		expect(vm.errorSmall).toBe(true)
+
+		await flush()
+		vm.onErrorLarge()
+		expect(vm.activeSrcLarge).toBe(vm.srcLarge)
+		expect(vm.errorLarge).toBe(false)
+		expect(activeSlotCount()).toBe(1)
+		vm.onLoadLarge() // the PHP retry loads
+		expect(activeSlotCount()).toBe(0)
+	})
+
+	test('a lookup that resolves after the file was swapped is ignored', async () => {
+		let resolveOld!: (url: string) => void
+		lookup.mockImplementation((id: number) => (id === 6
+			? new Promise((resolve) => { resolveOld = resolve })
+			: Promise.resolve(null)))
+		const wrapper = mount(makeFile(6, BLURHASH))
+		const vm = wrapper.vm as any
+		await flush()
+		await wrapper.setProps({ file: makeFile(7, BLURHASH) })
+		await flush()
+		resolveOld('/recognize-thumbs/stale')
+		await flush()
+		expect(vm.activeSrcLarge).toBe(vm.srcLarge)
+		expect(vm.activeSrcLarge).toContain('/preview/7?')
+		expect(activeSlotCount()).toBe(1)
 	})
 })

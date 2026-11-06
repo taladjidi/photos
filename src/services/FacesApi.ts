@@ -69,7 +69,7 @@ async function getToken(fresh = false): Promise<string> {
  * @param path
  * @param params
  */
-async function get<T>(path: string, params: Record<string, string | number> = {}): Promise<T> {
+export async function apiGet<T>(path: string, params: Record<string, string | number> = {}): Promise<T> {
 	for (let attempt = 0; ; attempt++) {
 		const token = await getToken(attempt > 0)
 		try {
@@ -87,9 +87,9 @@ async function get<T>(path: string, params: Record<string, string | number> = {}
 // Same threshold as recognize's FacesHome::MIN_LISTED_CLUSTER_SIZE: the long tail of
 // 2-4 photo clusters is mostly noise. Named small clusters are reached via searchClusters.
 export const MIN_LISTED_CLUSTER_SIZE = 5
-export const fetchClusters = (min = MIN_LISTED_CLUSTER_SIZE) => get<ApiCluster[]>('/clusters', { min })
-export const searchClusters = (q: string) => get<ApiCluster[]>('/search', { q })
-export const fetchClusterPage = (id: number, offset = 0, limit = PAGE) => get<ApiClusterFiles>(`/clusters/${id}`, { offset, limit })
+export const fetchClusters = (min = MIN_LISTED_CLUSTER_SIZE) => apiGet<ApiCluster[]>('/clusters', { min })
+export const searchClusters = (q: string) => apiGet<ApiCluster[]>('/search', { q })
+export const fetchClusterPage = (id: number, offset = 0, limit = PAGE) => apiGet<ApiClusterFiles>(`/clusters/${id}`, { offset, limit })
 
 /**
  * All files of a cluster, in pages of 500.
