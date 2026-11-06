@@ -13,7 +13,7 @@
  * Previews already cached by the service worker bypass this queue entirely.
  */
 
-const MAX_CONCURRENT = 10
+export const MAX_CONCURRENT = 10
 let active = 0
 
 type Waiter = {

@@ -223,7 +223,7 @@ export default {
 				return
 			}
 			// Blurhash files render no small image, so there is nothing to wait for.
-			const smallDone = !this.hasBlurhash || this.loadedSmall || this.errorSmall
+			const smallDone = this.hasBlurhash || this.loadedSmall || this.errorSmall
 			const largeDone = this.loadedLarge || this.errorLarge
 			if (smallDone && largeDone) {
 				this.slotHolder.release()
