@@ -123,6 +123,9 @@ export default {
 			errorSmall: false,
 			loadedLarge: false,
 			errorLarge: false,
+			usedFallbackSmall: false,
+			usedFallbackLarge: false,
+			loadId: 0,
 			isMobile: useIsMobile(),
 			activeSrcSmall: '',
 			activeSrcLarge: '',
@@ -167,6 +170,8 @@ export default {
 			this.errorSmall = false
 			this.loadedLarge = false
 			this.errorLarge = false
+			this.usedFallbackSmall = false
+			this.usedFallbackLarge = false
 			this.activeSrcSmall = ''
 			this.activeSrcLarge = ''
 
@@ -209,26 +214,36 @@ export default {
 		 * so we do not saturate the HTTP/2 connection.
 		 */
 		async queueLoad() {
+			const file = this.file
+			const loadId = this.loadId
+			let small: string | null = null
+			let large: string | null = null
+			// Public shares stay on the PHP preview.
+			// The lookup runs before the slot, so all mounted tiles batch into one request.
+			if (!this.$route?.params.token) {
+				const etag = this.decodedEtag;
+				[large, small] = await Promise.all([
+					lookupThumb(file.fileid, this.isMobile ? 256 : 1024, etag),
+					this.hasBlurhash ? null : lookupThumb(file.fileid, 256, etag),
+				])
+			}
+			// The file was swapped or the tile destroyed while we looked up.
+			if (loadId !== this.loadId || file !== this.file) {
+				return
+			}
+
 			// False if the component was destroyed or the file swapped while waiting.
 			if (!(await this.slotHolder.acquire())) {
 				return
 			}
-
-			const file = this.file
-			let small: string | null = null
-			let large: string | null = null
-			// Public shares stay on the PHP preview.
-			if (!this.$route?.params.token) {
-				[large, small] = await Promise.all([
-					lookupThumb(file.fileid, this.isMobile ? 256 : 1024),
-					this.hasBlurhash ? null : lookupThumb(file.fileid, 256),
-				])
-				// The slot was cancelled or the tile recycled while we looked up.
-				if (file !== this.file || !this.slotHolder.held) {
-					return
-				}
+			if (loadId !== this.loadId || !this.slotHolder.held) {
+				this.slotHolder.release()
+				return
 			}
 
+			// No thumb means PHP is already in use: one error is final.
+			this.usedFallbackSmall = small === null
+			this.usedFallbackLarge = large === null
 			this.activeSrcSmall = small ?? this.srcSmall
 			this.activeSrcLarge = large ?? this.srcLarge
 		},
@@ -248,6 +263,7 @@ export default {
 
 		/** Cancel a pending wait and release any held slot. */
 		cancelSlot() {
+			this.loadId++
 			this.slotHolder.release()
 		},
 
@@ -267,7 +283,8 @@ export default {
 
 		onErrorSmall() {
 			// A thumb that fails to load gets one retry through PHP before the tile gives up.
-			if (this.activeSrcSmall !== this.srcSmall) {
+			if (!this.usedFallbackSmall) {
+				this.usedFallbackSmall = true
 				this.activeSrcSmall = this.srcSmall
 				return
 			}
@@ -276,7 +293,8 @@ export default {
 		},
 
 		onErrorLarge() {
-			if (this.activeSrcLarge !== this.srcLarge) {
+			if (!this.usedFallbackLarge) {
+				this.usedFallbackLarge = true
 				this.activeSrcLarge = this.srcLarge
 				return
 			}

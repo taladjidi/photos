@@ -145,3 +145,44 @@ describe('FileComponent thumbs', () => {
 		expect(activeSlotCount()).toBe(1)
 	})
 })
+
+describe('FileComponent lookup ordering', () => {
+	test('a tile destroyed during a slow lookup never sets srcs and holds no slot', async () => {
+		let resolve!: (u: string) => void
+		lookup.mockImplementation(() => new Promise((r) => { resolve = r }))
+		const wrapper = mount(makeFile(8, BLURHASH))
+		const vm = wrapper.vm as any
+		await flush()
+		wrapper.destroy()
+		wrappers = []
+		resolve('/recognize-thumbs/late')
+		await flush()
+		expect(vm.activeSrcLarge).toBe('')
+		expect(activeSlotCount()).toBe(0)
+	})
+
+	test('public share route never looks up and uses the publicPreview URL', async () => {
+		const w = shallowMount(FileComponent, { propsData: { file: makeFile(9) }, mocks: { $route: { params: { token: 'tok' } } } })
+		wrappers.push(w)
+		await flush()
+		expect(lookup).not.toHaveBeenCalled()
+		expect((w.vm as any).activeSrcLarge).toContain('/publicPreview/9?')
+	})
+
+	test('blurhash files look up only the large size, with the etag', async () => {
+		mount(makeFile(10, BLURHASH))
+		await flush()
+		expect(lookup).toHaveBeenCalledTimes(1)
+		expect(lookup.mock.calls[0][2]).toBe('etag-10')
+	})
+
+	test('lookups of tiles mounted together are all issued before any slot gates them', async () => {
+		const n = MAX_CONCURRENT + 5
+		for (let i = 0; i < n; i++) { mount(makeFile(300 + i, BLURHASH)) }
+		await flush()
+		expect(lookup).toHaveBeenCalledTimes(n)
+		wrappers.forEach((w) => w.destroy())
+		wrappers = []
+		await flush() // hand-overs to cancelled waiters settle
+	})
+})

@@ -69,11 +69,11 @@ async function getToken(fresh = false): Promise<string> {
  * @param path
  * @param params
  */
-export async function apiGet<T>(path: string, params: Record<string, string | number> = {}): Promise<T> {
+export async function apiGet<T>(path: string, params: Record<string, string | number> = {}, config: { timeout?: number } = {}): Promise<T> {
 	for (let attempt = 0; ; attempt++) {
 		const token = await getToken(attempt > 0)
 		try {
-			const { data } = await axios.get(API + path, { params, headers: { Authorization: `Bearer ${token}` } })
+			const { data } = await axios.get(API + path, { params, headers: { Authorization: `Bearer ${token}` }, ...config })
 			return data as T
 		} catch (error) {
 			if (attempt === 0 && (error as { response?: { status?: number } }).response?.status === 401) {
