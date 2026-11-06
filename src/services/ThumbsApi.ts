@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { apiDown, apiFailed, apiGet } from './FacesApi.ts'
+import { apiGet } from './FacesApi.ts'
 
 type Sizes = Record<string, string>
 type Entry = { sizes: Promise<Sizes | null>, at: number, hit: boolean }
@@ -12,6 +12,11 @@ const BATCH_MS = 10
 const CHUNK = 500
 // The daemon generates thumbs in the background: ask again for a miss after a while.
 const MISS_TTL = 5 * 60 * 1000
+// The API answers 503 when briefly saturated: back off, never disable it for the session,
+// and keep its failures out of FacesApi's flag (that would send Faces to WebDAV).
+const BACKOFF_MS = 30 * 1000
+
+let downUntil = 0
 
 const cache = new Map<number, Entry>()
 let batch: Map<number, (sizes: Sizes | null) => void> | null = null
@@ -20,6 +25,7 @@ let batch: Map<number, (sizes: Sizes | null) => void> | null = null
 export function resetThumbsApi() {
 	cache.clear()
 	batch = null
+	downUntil = 0
 }
 
 async function flush() {
@@ -31,8 +37,9 @@ async function flush() {
 		let data: Record<string, Sizes> = {}
 		try {
 			data = await apiGet<Record<string, Sizes>>('/thumbs', { ids: chunk.join(',') })
-		} catch (error) {
-			apiFailed(error)
+		} catch {
+			downUntil = Date.now() + BACKOFF_MS
+			chunk.forEach((id) => cache.delete(id)) // not a miss: ask again after the back-off
 		}
 		chunk.forEach((id) => queued.get(id)!(data[id] ?? null))
 	}))
@@ -54,7 +61,7 @@ function enqueue(fileid: number): Promise<Sizes | null> {
  * @param size
  */
 export async function lookupThumb(fileid: number, size: 256 | 1024): Promise<string | null> {
-	if (apiDown()) {
+	if (Date.now() < downUntil) {
 		return null
 	}
 	let entry = cache.get(fileid)

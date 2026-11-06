@@ -5,7 +5,7 @@
 
 import axios from '@nextcloud/axios'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { resetFacesApi } from './FacesApi.ts'
+import { apiDown, resetFacesApi } from './FacesApi.ts'
 import { lookupThumb, resetThumbsApi } from './ThumbsApi.ts'
 
 vi.mock('@nextcloud/axios', () => ({ default: { get: vi.fn() } }))
@@ -77,14 +77,21 @@ describe('lookupThumb', () => {
 		expect(idsOf(thumbCalls()[1])).toEqual([2]) // the hit is not asked again
 	})
 
-	test('API failure resolves null, then no request is made at all', async () => {
+	test('API failure: null, no request during a 30 s back-off, Faces unaffected, then asked again', async () => {
 		get.mockRejectedValue({ response: { status: 503 } })
 		const failed = lookupThumb(1, 256)
 		await vi.advanceTimersByTimeAsync(10)
 		expect(await failed).toBeNull()
+		expect(apiDown()).toBe(false) // a thumbs 503 must not send Faces to WebDAV
 
 		get.mockClear()
 		expect(await lookupThumb(2, 256)).toBeNull()
 		expect(get).not.toHaveBeenCalled()
+
+		await vi.advanceTimersByTimeAsync(30 * 1000)
+		serve()
+		const again = lookupThumb(1, 256) // the failed id is not cached as a miss
+		await vi.advanceTimersByTimeAsync(10)
+		expect(await again).toBe('/recognize-thumbs/1-256')
 	})
 })
